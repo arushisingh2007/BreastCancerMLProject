@@ -1,0 +1,107 @@
+# Filter out rows where 'HER2 Final Status' is not equal to 0
+df_filtered = df_gene[df_gene['HER2 Final Status'] != 'Equivocal'].reset_index(drop=True)
+
+# Drop unnecessary columns and reset index
+X = df_filtered.drop(['ER Status', 'PR Status', 'HER2 Final Status'], axis=1)
+
+# Encode target variable y using LabelEncoder
+label_encoder = LabelEncoder()
+y = label_encoder.fit_transform(df_filtered['HER2 Final Status'])
+
+#X = df_gene[df_gene['HER2 Final Status'] != 0].drop(['ER Status', 'PR Status', 'HER2 Final Status'], axis=1).reset_index(drop=True)  # Features
+#y = (df_gene[df_gene['HER2 Final Status'] != 0].reset_index(drop=True)['HER2 Final Status'] == 2)*1  # Target variable
+
+#X = df_gene.drop(['ER Status', 'PR Status', 'HER2 Final Status'], axis=1)  # Features
+#y = df_gene['HER2 Final Status']  # Target variable
+
+# Scaling and imputation
+imputer = SimpleImputer()
+scaler = StandardScaler()
+
+
+# Perform feature selection using LinearSVC with L1 penalty
+lsvc = LinearSVC(C=0.04, penalty="l1", dual=False)
+#lsvc.fit(X_scaled, y)
+
+# Select features based on the model
+model = SelectFromModel(lsvc, prefit= False)
+#X_selected = model.transform(X_scaled)
+
+# Define your logistic regression model
+logreg_model = LogisticRegressionCV(penalty='elasticnet',
+                                    Cs=20, l1_ratios=[0.5, 0.7, 0.9, 0.97],
+                                    solver='saga', max_iter=int(1e5), tol=1e-5)
+
+# Create a pipeline for feature selection and model training
+pipeline = Pipeline([('imputer', imputer), ('selector', model), ('estimator', logreg_model)])
+
+# Define your cross-validation strategy
+skf1 = StratifiedKFold(n_splits = 4, shuffle= True, random_state = 42)
+
+# Perform cross-validation
+scores = cross_val_score(pipeline, X, y, cv=skf1)
+
+predicted_probabilities = cross_val_predict(pipeline, X, y, cv=skf1, method='predict_proba')
+
+# Compute ROC AUC score
+roc_auc = roc_auc_score(y, predicted_probabilities[:, 1])
+
+
+print("Cross-Validation Scores:", scores)
+print("Mean Cross-Validation Score:", np.mean(scores))
+print("ROC AUC Score:", roc_auc)
+
+# Fit the model on the entire training data
+pipeline.fit(X, y)
+label_encoder = LabelEncoder()
+y_encoded = label_encoder.fit_transform(y)
+
+from sklearn.metrics import PrecisionRecallDisplay
+PrecisionRecallDisplay.from_predictions(y_encoded, predicted_probabilities[:, 1])
+plt.show()
+print("Cross-Validation Scores:", scores)
+print("Mean Cross-Validation Score:", np.mean(scores))
+print("ROC AUC Score:", roc_auc)
+logreg_coef = pipeline.named_steps['estimator'].coef_[0]
+
+# Printing genes and their corresponding coefficients in a vertical format
+positive_genes = []
+positive_coefs = []
+negative_genes = []
+negative_coefs = []
+
+for gene, coef in zip(X.columns, logreg_coef):
+    if coef > 0:
+        positive_genes.append(gene)
+        positive_coefs.append(coef)
+    else:
+        negative_genes.append(gene)
+        negative_coefs.append(coef)
+
+# Define the gene you want to exclude
+gene_to_exclude = 'Complete TCGA ID'
+
+# Remove the gene and its corresponding coefficient from the lists
+if gene_to_exclude in positive_genes:
+    index = positive_genes.index(gene_to_exclude)
+    del positive_genes[index]
+    del positive_coefs[index]
+elif gene_to_exclude in negative_genes:
+    index = negative_genes.index(gene_to_exclude)
+    del negative_genes[index]
+    del negative_coefs[index]
+
+
+plt.figure(figsize=(10, 8))
+
+# Plotting positive coefficients
+plt.barh(positive_genes, positive_coefs, color='blue', label='Positive Coefficients for HER2 Status+ Breast Cancer')
+
+# Plotting negative coefficients
+plt.barh(negative_genes, negative_coefs, color='red', label='Negative Coefficients for HER2 Status- Breast Cancer')
+plt.yticks(fontsize= 14)
+plt.xlabel('Coefficient Value')
+plt.ylabel('Gene')
+plt.title('Coefficients of Genes')
+plt.legend()
+plt.show()
