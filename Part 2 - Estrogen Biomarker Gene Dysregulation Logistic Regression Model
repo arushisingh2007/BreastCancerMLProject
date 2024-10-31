@@ -1,0 +1,203 @@
+url = 'https://raw.githubusercontent.com/arushisingh2007/breast_cancer2/main/clinical_data_breast_cancer.csv'
+df_y = pd.read_csv(url)
+url2 = 'https://raw.githubusercontent.com/arushisingh2007/BreastCancer77/main/77_cancer_proteomes_CPTAC_itraq%202.csv'
+df_gene = pd.read_csv(url2)
+#import os
+#os.listdir('drive/MyDrive/Dataset2')
+#file_path = '/content/drive/MyDrive/Dataset2/77_cancer_proteomes_CPTAC_itraq.csv.zip'
+#df_gene =  pd.read_csv(file_path)
+#features = df_gene.columns.tolist()
+#df_gene.columns = df_gene.iloc[0]
+#df_gene = df_gene.iloc[3:]
+#df_gene = df_gene.reset_index(drop=False)
+#df_gene_healthy = df_gene.iloc[-3:]
+#df_gene = df_gene.iloc[:-3]
+# df_gene = df_gene.drop([0,1,2])
+ids_to_drop = ['AO-A12D.05TCGA', 'C8-A131.32TCGA', 'AO-A12B.34TCGA']
+ids_for_gene = ['TCGA-C8-A130']
+
+df_gene = df_gene[~df_gene['Complete TCGA ID'].isin(ids_to_drop)]
+#f_y = df_y[~df_gene['Complete TCGA ID'].isin(ids_for_gene)]
+df_gene = df_gene.reset_index(drop=True)
+df_gene
+# Function to convert patient IDs to the desired format
+def convert_to_tcga_format(patient_id):
+    parts = patient_id.split('.')
+    first_part = parts[0]
+    last_part = parts[-1]
+    return 'TCGA-' + last_part[:0] + last_part[8:] + first_part
+
+# Apply the conversion function to the 'Complete TCGA ID' column in df_gene
+df_gene['Complete TCGA ID'] = df_gene['Complete TCGA ID'].apply(convert_to_tcga_format)
+
+# Display the updated DataFrame
+df_gene
+matching_ids = []
+
+# Iterate over the patient IDs in df_gene
+for patient_id in df_gene['Complete TCGA ID']:
+    # Check if the patient ID exists in df_y
+    if patient_id in df_y['Complete TCGA ID'].values:
+        # If the patient ID exists in df_y, append it to the matching_ids list
+        matching_ids.append(patient_id)
+
+matching_ids = matching_ids[3:]
+# Print the list of matching patient IDs
+print(len(matching_ids))
+non_matching_ids = []
+
+# Iterate over the patient IDs in df_gene
+for patient_id in df_gene['Complete TCGA ID']:
+    # Check if the patient ID does not exist in the matching_ids list
+    if patient_id not in matching_ids:
+        # If the patient ID does not exist in matching_ids, append it to the non_matching_ids list
+        non_matching_ids.append(patient_id)
+
+# Print the list of non-matching patient IDs
+print(non_matching_ids)
+df_gene = df_gene[df_gene['Complete TCGA ID'].isin(matching_ids)]
+
+# Reset the index of the DataFrame after removing rows
+df_gene = df_gene.reset_index(drop=True)
+
+# Print the updated DataFrame
+df_gene
+not_common_ids = []
+
+# Iterate through the rows of df_y
+for index, row in df_y.iterrows():
+    # Get the 'Complete TCGA ID' from the current row
+    current_id = row['Complete TCGA ID']
+
+    # Check if the ID is not in the matching_ids list
+    if current_id not in matching_ids:
+        # If not in matching_ids, append it to the not_common_ids list
+        not_common_ids.append(current_id)
+
+# Print the number of IDs not in common
+not_common_ids.append('TCGA-C8-A130')
+print(not_common_ids)
+# Filter out rows from df_y where the 'Complete TCGA ID' is not in the matching_ids list
+df_y = df_y[df_y['Complete TCGA ID'].isin(matching_ids)]
+
+# Reset the index of the DataFrame after filtering
+df_y = df_y.reset_index(drop=True)
+
+# Print the updated DataFrame
+df_y
+for tcga_id in df_y['Complete TCGA ID']:
+
+    gene_row = df_gene[df_gene['Complete TCGA ID'] == tcga_id]
+
+    if not gene_row.empty:
+        gene_index = gene_row.index[0]
+
+
+        df_gene.at[gene_index, 'ER Status'] = df_y.loc[df_y['Complete TCGA ID'] == tcga_id, 'ER Status'].values[0]
+        df_gene.at[gene_index, 'PR Status'] = df_y.loc[df_y['Complete TCGA ID'] == tcga_id, 'PR Status'].values[0]
+        df_gene.at[gene_index, 'HER2 Final Status'] = df_y.loc[df_y['Complete TCGA ID'] == tcga_id, 'HER2 Final Status'].values[0]
+
+#df_gene.fillna(0, inplace=True)
+label_encoder = LabelEncoder()
+
+categorical_columns = ['Complete TCGA ID']
+
+for col in categorical_columns:
+    df_gene[col] = label_encoder.fit_transform(df_gene[col])
+
+df_gene
+X = df_gene.drop(['ER Status', 'PR Status', 'HER2 Final Status'], axis=1)  # Features
+y = df_gene['ER Status']  # Target variable
+
+# Scaling and imputation
+imputer = SimpleImputer()
+scaler = StandardScaler()
+
+# X_imputed = imputer.fit_transform(X)
+# X_scaled = scaler.fit_transform(X_imputed)
+
+# Perform feature selection using LinearSVC with L1 penalty
+lsvc = LinearSVC(C=0.05, penalty="l1", dual=False)
+# lsvc.fit(X_scaled, y)
+
+# Select features based on the model
+model = SelectFromModel(lsvc, prefit= False)
+# X_selected = model.transform(X_scaled)
+
+# Define your logistic regression model
+logreg_model = LogisticRegressionCV(penalty='elasticnet',
+                                    Cs=20, l1_ratios=[0.5, 0.7, 0.9, 0.97],
+                                    solver='saga', max_iter=int(1e5), tol=1e-5)
+
+# Create a pipeline for feature selection and model training
+pipeline = Pipeline([('inputer', imputer), ('scaler', scaler), ('selector', model), ('estimator', logreg_model)])
+
+# Define your cross-validation strategy
+skf1 = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
+scores = cross_val_score(pipeline, X, y, cv=skf1)
+
+predicted_probabilities = cross_val_predict(pipeline, X, y, cv=skf1, method='predict_proba')
+
+# Compute ROC AUC score
+roc_auc = roc_auc_score(y, predicted_probabilities[:, 1])
+
+
+print("Cross-Validation Scores:", scores)
+print("Mean Cross-Validation Score:", np.mean(scores))
+print("ROC AUC Score:", roc_auc)
+
+# Fit the model on the entire training data
+# imputer = SimpleImputer()
+# scaler = StandardScaler()
+
+# X_imputed = imputer.fit_transform(X)
+# X_scaled = scaler.fit_transform(X_imputed)
+pipeline.fit(X, y)
+label_encoder = LabelEncoder()
+y_encoded = label_encoder.fit_transform(y)
+
+from sklearn.metrics import PrecisionRecallDisplay
+PrecisionRecallDisplay.from_predictions(y_encoded, predicted_probabilities[:, 1])
+plt.show()
+print("Cross-Validation Scores:", scores)
+print("Mean Cross-Validation Score:", np.mean(scores))
+print("ROC AUC Score:", roc_auc)
+selected_features_indices = pipeline.named_steps['selector'].get_support(indices=True)
+
+# Getting the selected feature names
+selected_feature_names = X.columns[selected_features_indices]
+
+# Extracting the coefficients from the logistic regression model
+logreg_coef = pipeline.named_steps['estimator'].coef_[0]
+
+# Printing genes and their corresponding coefficients in a vertical format
+positive_genes = []
+positive_coefs = []
+negative_genes = []
+negative_coefs = []
+
+for gene, coef in zip(selected_feature_names, logreg_coef):
+    if coef > 0:
+        positive_genes.append(gene)
+        positive_coefs.append(coef)
+    else:
+        negative_genes.append(gene)
+        negative_coefs.append(coef)
+
+plt.figure(figsize=(10, 8))
+
+# Plotting positive coefficients
+plt.barh(positive_genes, positive_coefs, color='blue', label='Positive Coefficients for ER+ Breast Cancer')
+
+# Plotting negative coefficients
+plt.barh(negative_genes, negative_coefs, color='red', label='Negative Coefficients for ER- Breast Cancer')
+
+# Increase font size for features and other text elements
+plt.yticks(fontsize=19)  # Y-axis labels (genes)
+plt.xticks(fontsize=12)  # X-axis labels (coefficient values)
+plt.xlabel('Coefficient Value', fontsize=15)
+plt.ylabel('Gene', fontsize=15)
+plt.title('Coefficients of Genes for ER Status', fontsize=18)
+plt.legend(fontsize=12)
+plt.show()
