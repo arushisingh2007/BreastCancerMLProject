@@ -1,0 +1,128 @@
+# Filter data for samples with negative ER, PR, and HER2 statuses
+# df_tnbc = df_gene[(df_gene['ER Status'] == 'Negative') & (df_gene['PR Status'] == 'Negative') & (df_gene['HER2 Final Status'] == 'Negative')]
+from copy import deepcopy
+df_tnbc = deepcopy(df_gene)
+
+# Create a binary target variable for TNBC prediction
+tnbc = [1 if (df_gene.iloc[i]['ER Status'] == 'Negative') and \
+ (df_gene.iloc[i]['PR Status'] == 'Negative') and \
+  (df_gene.iloc[i]['HER2 Final Status'] == 'Negative') else 0 for i in range(len(df_gene))]
+
+df_tnbc['TNBC'] = tnbc
+
+df_tnbc
+# Features for TNBC prediction
+X_tnbc = df_tnbc.drop(['ER Status', 'PR Status', 'HER2 Final Status', 'TNBC', 'Complete TCGA ID'], axis=1)
+
+# Target variable for TNBC prediction
+y_tnbc = df_tnbc['TNBC']
+
+from sklearn.utils import class_weight
+
+# Compute class weights
+class_weights = class_weight.compute_class_weight('balanced', classes=np.unique(y_tnbc), y=y_tnbc)
+
+# Update Logistic Regression model with class weights
+
+# Scaling and imputation
+imputer_tnbc = SimpleImputer()
+scaler_tnbc = StandardScaler()
+
+#X_tnbc_imputed = imputer_tnbc.fit_transform(X_tnbc)
+#X_tnbc_scaled = scaler_tnbc.fit_transform(X_tnbc_imputed)
+
+# Perform feature selection using LinearSVC with L1 penalty
+lsvc_tnbc = LinearSVC(C=0.06, penalty="l1", dual=False)
+#lsvc_tnbc.fit(X_tnbc_scaled, y_tnbc)
+
+# Select features based on the model
+model_tnbc = SelectFromModel(lsvc_tnbc, prefit=False)
+#X_tnbc_selected = model_tnbc.transform(X_tnbc_scaled)
+
+# Define your logistic regression model for TNBC prediction
+logreg_model_tnbc = LogisticRegressionCV(penalty='elasticnet',
+                                         Cs=20, l1_ratios=[0.5, 0.7, 0.9, 0.97],
+                                         solver='saga', max_iter=int(1e5), tol=1e-5,
+                                           class_weight=dict(zip(np.unique(y_tnbc), class_weights)))
+
+# Create a pipeline for feature selection and model training for TNBC prediction
+pipeline = Pipeline([('inputer', imputer_tnbc), ('scaler', scaler_tnbc), ('selector', model_tnbc), ('estimator', logreg_model_tnbc)])
+
+# Define your cross-validation strategy for TNBC prediction
+skf1_tnbc = StratifiedKFold(n_splits= 3, shuffle=True, random_state=42)
+
+# Perform cross-validation for TNBC prediction
+scores_tnbc = cross_val_score(pipeline, X_tnbc, y_tnbc, cv=skf1_tnbc)
+
+predicted_probabilities_tnbc = cross_val_predict(pipeline, X_tnbc, y_tnbc, cv=skf1_tnbc, method='predict_proba')
+
+# Compute ROC AUC score for TNBC prediction
+roc_auc_tnbc = roc_auc_score(y_tnbc, predicted_probabilities_tnbc[:, 1])
+
+print("Cross-Validation Scores for TNBC Prediction:", scores_tnbc)
+print("Mean Cross-Validation Score for TNBC Prediction:", np.mean(scores_tnbc))
+print("ROC AUC Score for TNBC Prediction:", roc_auc_tnbc)
+
+# Fit the model on the entire training data for TNBC prediction
+pipeline.fit(X_tnbc, y_tnbc)
+from sklearn.metrics import precision_recall_curve, PrecisionRecallDisplay
+
+# Assuming you have already computed predicted probabilities
+# predicted_probabilities_tnbc = ...
+
+# Compute precision and recall
+precision, recall, _ = precision_recall_curve(y_tnbc, predicted_probabilities_tnbc[:, 1])
+
+# Create Precision-Recall curve display
+pr_display = PrecisionRecallDisplay(precision=precision, recall=recall)
+pr_display.plot()
+plt.title('Precision-Recall Curve for TNBC Prediction')
+plt.xlabel('Recall')
+plt.ylabel('Precision')
+plt.show()
+
+print("Cross-Validation Scores for TNBC Prediction:", scores_tnbc)
+print("Mean Cross-Validation Score for TNBC Prediction:", np.mean(scores_tnbc))
+print("ROC AUC Score for TNBC Prediction:", roc_auc_tnbc)
+logreg_coef = pipeline.named_steps['estimator'].coef_[0]
+
+# Printing genes and their corresponding coefficients in a vertical format
+positive_genes = []
+positive_coefs = []
+negative_genes = []
+negative_coefs = []
+
+for gene, coef in zip(X.columns, logreg_coef):
+    if coef > 0:
+        positive_genes.append(gene)
+        positive_coefs.append(coef)
+    else:
+        negative_genes.append(gene)
+        negative_coefs.append(coef)
+
+# Define the gene you want to exclude
+gene_to_exclude = 'Complete TCGA ID'
+
+# Remove the gene and its corresponding coefficient from the lists
+if gene_to_exclude in positive_genes:
+    index = positive_genes.index(gene_to_exclude)
+    del positive_genes[index]
+    del positive_coefs[index]
+elif gene_to_exclude in negative_genes:
+    index = negative_genes.index(gene_to_exclude)
+    del negative_genes[index]
+    del negative_coefs[index]
+
+plt.figure(figsize=(10, 8))
+
+# Plotting positive coefficients
+plt.barh(positive_genes, positive_coefs, color='blue', label='Positive TNBC Coefficients')
+
+# Plotting negative coefficients
+plt.barh(negative_genes, negative_coefs, color='red', label='Negative TNBC Coefficients')
+plt.yticks(fontsize= 16)
+plt.xlabel('Coefficient Value')
+plt.ylabel('Gene')
+plt.title('Coefficients of Genes for Triple-Negative Breast Cancer')
+plt.legend()
+plt.show()
