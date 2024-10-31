@@ -1,4 +1,4 @@
-# Load the dataset from GitHub
+#load the dataset from github
 url = 'https://raw.githubusercontent.com/arushisingh2007/breast_cancer/main/breast_cancer.csv'
 df = pd.read_csv(url)
 
@@ -9,10 +9,11 @@ categorical_columns = ['Age','Race','Marital Status','T Stage ' ,'N Stage','6th 
 for col in categorical_columns:
     df[col] = label_encoder.fit_transform(df[col])
 
-#drop all the other features
-X = df.drop('Survival Months', axis=1)
-X = X.drop(columns=['Status'])
-y = df['Survival Months']
+#drop all the other features and only include status
+X = df.drop('Status', axis=1)
+X = X.drop(columns=['Survival Months'])
+y = df['Status'].replace('Alive',1).replace('Dead',0).values
+
 
 # Create a StandardScaler and LinearSVC pipeline
 scalar = StandardScaler()
@@ -21,15 +22,114 @@ scalar = StandardScaler()
 #split the dataset into training and testing sets
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
+# scaling
 scaler = StandardScaler()
 X_train = scaler.fit_transform(X_train)
-X_test = scaler.transform(X_test)
-# # scaling
-# scaler = StandardScaler()
-# X_scaled = scaler.fit_transform(X)  # Create a scaled version of X as a NumPy array
+X_test = scaler.transform(X_test)         # Create a scaled version of X as a NumPy array
 
-# # Create a DataFrame from the scaled features
-# X_scaled_df = pd.DataFrame(X_scaled, columns=X.columns)
+# Create a DataFrame from the scaled features
+#X_scaled_df = pd.DataFrame(X_scaled, columns=X.columns)
 
 df.describe()
-df
+
+#create the logistic regression model
+logreg_model = LogisticRegressionCV(penalty='elasticnet', solver='saga', max_iter=int(1e5), tol=1e-5,
+                                    l1_ratios=[0.3, 0.5, 0.7, 0.85, 0.9, 0.95, 0.99],
+                                    Cs=20,
+                                    n_jobs=-1,)
+#train the model using the training data
+
+pipeline = Pipeline([('transformer', scalar), ('estimator', logreg_model)])
+cv = KFold(n_splits=5)
+scores = cross_val_score(pipeline, X, y, cv=cv)
+
+print("Cross-Validation Scores:", scores)
+print("Mean Cross-Validation Score:", np.mean(scores))
+logreg_model.fit(X_train, y_train)
+
+#make predictions using the test data
+y_pred = logreg_model.predict(X_test)
+y_pred_prob = logreg_model.predict_proba(X_test)
+
+#calculate accuracy and print classification report
+accuracy = accuracy_score(y_test, y_pred)
+classification_rep = classification_report(y_test, y_pred)
+auc = roc_auc_score(y_test, y_pred_prob[:,1])
+
+print(f"Accuracy: {accuracy:.2f}")
+print("Classification Report:")
+print(f'ROC AUC Score: {auc: .2f}')
+print(classification_rep)
+
+#make predictions using the test data
+y_pred = logreg_model.predict(X_test)
+y_pred_prob = logreg_model.predict_proba(X_test)
+
+#calculate accuracy and print classification report
+accuracy = accuracy_score(y_test, y_pred)
+classification_rep = classification_report(y_test, y_pred)
+auc = roc_auc_score(y_test, y_pred_prob[:,1])
+
+print(f"Accuracy: {accuracy:.2f}")
+print("Classification Report:")
+print(f'ROC AUC Score: {auc: .2f}')
+print(classification_rep)
+# Assuming X is a DataFrame with feature names
+feature_names = X.columns.tolist()
+
+# Extract coefficients and intercepts
+coef = logreg_model.coef_[0]  # Coefficients for the features
+intercept = logreg_model.intercept_[0]  # Intercept
+
+# Split the dataset into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Scaling
+X_train_scaled = scalar.fit_transform(X_train)
+X_test_scaled = scalar.transform(X_test)
+
+# Train the model using the training data
+logreg_model.fit(X_train_scaled, y_train)
+
+# Make predictions using the test data
+y_pred_prob = logreg_model.predict_proba(X_test_scaled)
+
+# Display precision-recall analysis
+precision_recall_display = PrecisionRecallDisplay.from_estimator(logreg_model, X_test_scaled, y_test)
+precision_recall_display.plot()
+plt.title('Precision-Recall Curve')
+plt.show()
+
+fpr, tpr, thresholds = roc_curve(y_test, y_pred_prob[:, 1])
+plt.figure(figsize=(8, 6))
+plt.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve (area = %0.2f)' % auc)
+plt.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
+plt.xlim([0.0, 1.0])
+plt.ylim([0.0, 1.05])
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('Receiver Operating Characteristic')
+plt.legend(loc="lower right")
+plt.show()
+
+logreg_model.coef_
+
+# Extract coefficients and corresponding feature names
+coefficients = logreg_model.coef_[0]
+feature_names = X.columns
+
+# Create a bar plot
+plt.figure(figsize=(10, 6))
+plt.barh(feature_names, coefficients, color='skyblue')
+plt.xlabel('Coefficient Value')
+plt.ylabel('Features')
+plt.title('Coefficients of Logistic Regression Model: Features That Influence Status')
+
+plt.yticks(fontsize=19)
+
+plt.grid(True)
+plt.show()
+#negative coefficient tells that as corresponding feature increases in value, the target variable, likelihood/probability of staying alive (positive class), decreases
+#lower pr or er values show that likelhood of staying alive decreass
+
+#cancer cells expressing lower progesterone receptors
