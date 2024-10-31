@@ -1,0 +1,35 @@
+# Load the dataset from GitHub
+url = 'https://raw.githubusercontent.com/arushisingh2007/breast_cancer/main/breast_cancer.csv'
+df = pd.read_csv(url)
+
+label_encoder = LabelEncoder()
+
+categorical_columns = ['Age','Race','Marital Status','T Stage ' ,'N Stage','6th Stage','differentiate','Grade','A Stage','Tumor Size','Estrogen Status','Progesterone Status','Regional Node Examined', 'Reginol Node Positive' , 'Survival Months', 'Status']
+
+for col in categorical_columns:
+    df[col] = label_encoder.fit_transform(df[col])
+
+#drop all the other features
+X = df.drop('Survival Months', axis=1)
+X = X.drop(columns=['Status'])
+y = df['Survival Months']
+
+# Create a StandardScaler and LinearSVC pipeline
+scalar = StandardScaler()
+#clf = LinearSVC()
+
+#split the dataset into training and testing sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_test = scaler.transform(X_test)
+# # scaling
+# scaler = StandardScaler()
+# X_scaled = scaler.fit_transform(X)  # Create a scaled version of X as a NumPy array
+
+# # Create a DataFrame from the scaled features
+# X_scaled_df = pd.DataFrame(X_scaled, columns=X.columns)
+
+df.describe()
+df
