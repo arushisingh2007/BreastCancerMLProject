@@ -1,0 +1,23 @@
+# Assuming df is your DataFrame with survival data
+cph = CoxPHFitter()
+cph.fit(df, duration_col='Survival Months', event_col='Status')
+
+# Print the summary of the model
+print(cph.summary)
+
+# Extract coefficients and print them
+coefficients = cph.hazard_ratios_
+print("Hazard Ratios:")
+print(coefficients)
+
+# Optionally, if you want to print the coefficients with their feature names
+coefficients_df = pd.DataFrame(coefficients, columns=['Hazard Ratio'])
+print("Coefficients with Features:")
+print(coefficients_df)
+# Plot covariate coefficients
+cph.plot()
+plt.title('Cox-Hazard Model', fontsize= 15)
+plt.xlabel('Hazard Ratio')
+plt.ylabel('Covariate')
+plt.yticks(fontsize= 15)
+plt.show()
