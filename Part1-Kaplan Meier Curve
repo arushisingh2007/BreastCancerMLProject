@@ -1,0 +1,33 @@
+est_pos_index = df.loc[df['Estrogen Status'] == 1].index.tolist()
+est_neg_index = df.loc[df['Estrogen Status'] == 0].index.tolist()
+
+kmf = KaplanMeierFitter()
+
+ax = plt.subplot(111)
+
+# t = np.linspace(0, 50, 51)
+# kmf.fit(T[dem], event_observed=E[dem], timeline=t, label="Democratic Regimes")
+# ax = kmf.plot_survival_function(ax=ax)
+
+# Fit the Kaplan-Meier curve
+kmf.fit(df.loc[pr_pos_index]['Survival Months'], event_observed=df.loc[pr_pos_index]['Status'], label='PR Positive') # plot er pos
+ax = kmf.plot_survival_function(ax=ax)
+print(list(kmf.survival_function_['PR Positive']))
+
+
+kmf.fit(df.loc[pr_neg_index]['Survival Months'], event_observed=df.loc[pr_neg_index]['Status'], label='PR Negative') # plot er pos
+ax = kmf.plot_survival_function(ax=ax)
+print(list(kmf.survival_function_['PR Negative']))
+
+
+# Plot the Kaplan-Meier curve
+
+plt.xlabel('Time (Months)')
+plt.ylabel('Survival Probability')
+plt.title('Progesterone Kaplan-Meier Curve')
+plt.show()
+
+results = logrank_test(df.loc[pr_pos_index]['Survival Months'], df.loc[pr_neg_index]['Survival Months'],
+                       df.loc[pr_pos_index]['Status'], df.loc[pr_neg_index]['Status'], alpha=.99)
+
+results.print_summary()
